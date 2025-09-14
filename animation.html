@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Neural Network Step-by-Step (3 → 2 → 1)</title>
+<style>
+  :root{
+    --bg:#111219;
+    --panel:#1b1c22;
+    --muted:#bfc6cf;
+    --accent:#2ecc71;
+    --accent2:#e74c3c;
+    --weight:#f1c40f;
+    --bias:#9b59b6;
+    --conn:#6b7280;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: linear-gradient(180deg,#0f1114 0%, #14151a 100%);
+    color:var(--muted);
+    padding:18px;
+    display:flex;
+    justify-content:center;
+  }
+
+  .app {
+    width:100%;
+    max-width:1200px;
+    display:grid;
+    grid-template-columns: 1fr 420px;
+    gap:20px;
+  }
+
+  .visualization {
+    background:var(--panel);
+    border-radius:12px;
+    padding:18px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  }
+
+  .controls {
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    margin-bottom:12px;
+  }
+
+  button {
+    background:#2b3140;
+    color:var(--muted);
+    border:1px solid rgba(255,255,255,0.03);
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  button:disabled { opacity:0.4; cursor:not-allowed; }
+
+  .network-area {
+    position:relative;
+    height:520px;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-around;
+  }
+
+  .layer {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:34px;
+    z-index:3;
+    min-width:120px;
+  }
+
+  .layer-title { color:#9fb0c8; margin-bottom:-8px; font-weight:700; }
+
+  .neuron {
+    width:92px;
+    height:92px;
+    border-radius:50%;
+    background:#262a33;
+    border:3px solid rgba(255,255,255,0.04);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    transition: transform .32s, box-shadow .32s, background .32s, border-color .32s;
+    box-shadow: 0 6px 22px rgba(2,6,23,0.7);
+    position:relative;
+    color:var(--muted);
+  }
+
+  .neuron .label { font-size:0.84rem; opacity:0.85; font-weight:700; }
+  .neuron .value { font-size:0.98rem; margin-top:6px; color:#fff; font-weight:700; }
+  .neuron .extra { font-size:0.75rem; color:#9fb0c8; margin-top:4px; height:16px; }
+
+  .neuron.pulse-forward {
+    transform:scale(1.08);
+    border-color:var(--accent);
+    box-shadow: 0 10px 30px rgba(46,204,113,0.12);
+    background:linear-gradient(180deg,#24302a, #1b2a24);
+  }
+  .neuron.pulse-back {
+    transform:scale(1.08);
+    border-color:var(--accent2);
+    box-shadow: 0 10px 30px rgba(231,76,60,0.12);
+    background:linear-gradient(180deg,#3a1d1d, #2a1212);
+  }
+
+  /* SVG overlay for connections */
+  svg.connections {
+    position:absolute;
+    top:0; left:0;
+    width:100%; height:100%;
+    z-index:2;
+    pointer-events:none;
+  }
+  .conn-line {
+    stroke:var(--conn);
+    stroke-width:3;
+    stroke-linecap:round;
+    transition:stroke 0.25s, stroke-width 0.25s, opacity 0.25s;
+  }
+  .conn-forward {
+    stroke:var(--accent);
+    stroke-width:5;
+    stroke-dasharray:8;
+    animation:dash 1s linear;
+  }
+  .conn-back {
+    stroke:var(--accent2);
+    stroke-width:5;
+    stroke-dasharray:8;
+    animation:dash-back 1s linear;
+  }
+  @keyframes dash { from { stroke-dashoffset: 20 } to { stroke-dashoffset: 0 } }
+  @keyframes dash-back { from { stroke-dashoffset: -20 } to { stroke-dashoffset: 0 } }
+
+  /* weight labels */
+  .weight-label, .bias-label {
+    position:absolute;
+    background:var(--weight);
+    color:#000;
+    font-weight:700;
+    padding:4px 7px;
+    border-radius:6px;
+    font-size:0.78rem;
+    transform:translate(-50%,-50%);
+    z-index:4;
+    box-shadow:0 6px 18px rgba(0,0,0,0.6);
+  }
+  .bias-label { background:var(--bias); color:#fff; font-weight:700; font-size:0.78rem; }
+
+  /* Explanation panel */
+  .explain {
+    background:var(--panel);
+    padding:18px;
+    border-radius:12px;
+    height:520px;
+    overflow:auto;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  }
+  .step-title { font-size:1.12rem; color:#cfe8da; margin-bottom:8px; font-weight:800; }
+  .explain .math { background:#0f1720; padding:10px; border-radius:8px; margin:8px 0; color:#e6eef0; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
+  .explain p { line-height:1.5; color:var(--muted); margin:8px 0; }
+  .explain code { background:#0b1220; padding:4px 6px; border-radius:6px; color:#d6f6e1; font-weight:700; }
+
+  /* small responsive */
+  @media (max-width:980px){
+    .app { grid-template-columns: 1fr; }
+    .explain{ height:420px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="visualization">
+    <div class="controls">
+      <button id="prevBtn">⬅ Prev</button>
+      <button id="nextBtn">Next ➡</button>
+      <button id="resetBtn">Reset</button>
+      <div style="width:18px"></div>
+      <div id="stepCounter" style="align-self:center;color:#9fb0c8;font-weight:700"></div>
+    </div>
+
+    <div class="network-area" id="networkArea">
+      <!-- Layers -->
+      <div class="layer" id="layer-input">
+        <div class="layer-title">Input</div>
+        <div class="neuron" id="neuron-input-0"><div class="label">x1</div><div class="value">0.00</div><div class="extra"></div></div>
+        <div class="neuron" id="neuron-input-1"><div class="label">x2</div><div class="value">0.00</div><div class="extra"></div></div>
+        <div class="neuron" id="neuron-input-2"><div class="label">x3</div><div class="value">0.00</div><div class="extra"></div></div>
+      </div>
+
+      <div class="layer" id="layer-hidden">
+        <div class="layer-title">Hidden (ReLU)</div>
+        <div class="neuron" id="neuron-hidden-0"><div class="label">h1</div><div class="value">0.00</div><div class="extra"></div></div>
+        <div class="neuron" id="neuron-hidden-1"><div class="label">h2</div><div class="value">0.00</div><div class="extra"></div></div>
+      </div>
+
+      <div class="layer" id="layer-output">
+        <div class="layer-title">Output</div>
+        <div class="neuron" id="neuron-output-0"><div class="label">y</div><div class="value">0.00</div><div class="extra"></div></div>
+      </div>
+
+      <!-- SVG for connections -->
+      <svg class="connections" id="connectionsSvg"></svg>
+    </div>
+  </div>
+
+  <div class="explain" id="explainPanel">
+    <div class="step-title" id="stepTitle">Welcome</div>
+    <div id="explanationHtml">
+      <p>This visualization walks one training step (forward + backward) for a tiny network (3 → 2 → 1). Click Next to start. All numbers are computed live — nothing is hard-coded into the explanation.</p>
+      <p>Inputs: <code>X = [1, 2, 3]</code>, Target: <code>y_true = 5</code></p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* -------------------------
+   Matrix helper utilities
+   ------------------------- */
+function zeros(r,c){ return Array.from({length:r},()=>Array.from({length:c},()=>0)); }
+function copy(mat){ return JSON.parse(JSON.stringify(mat)); }
+function dot(a,b){
+  // a: m x p, b: p x n -> m x n
+  const m=a.length, p=a[0].length, n=b[0].length;
+  const out = zeros(m,n);
+  for(let i=0;i<m;i++){
+    for(let j=0;j<n;j++){
+      let s=0;
+      for(let k=0;k<p;k++) s += a[i][k]*b[k][j];
+      out[i][j]=s;
+    }
+  }
+  return out;
+}
+function addBias(mat, bias){
+  return mat.map((r,ri)=> r.map((v,ci)=> v + bias[0][ci]));
+}
+function relu(mat){ return mat.map(r=> r.map(v=> v>0? v: 0)); }
+function reluDeriv(mat){ return mat.map(r=> r.map(v=> v>0? 1: 0)); }
+function transpose(mat){ return mat[0].map((_,c)=>mat.map(r=>r[c])); }
+function scalarMul(mat, s){ return mat.map(r=> r.map(v=> v*s)); }
+function matAdd(a,b){ return a.map((r,i)=> r.map((v,j)=> v + b[i][j])); }
+function matSub(a,b){ return a.map((r,i)=> r.map((v,j)=> v - b[i][j])); }
+function matElemMul(a,b){ return a.map((r,i)=> r.map((v,j)=> v * b[i][j])); }
+function sumRows(mat){ // returns [sumAcrossColumns]
+  const sums = Array(mat[0].length).fill(0);
+  for(let i=0;i<mat.length;i++) for(let j=0;j<mat[0].length;j++) sums[j]+=mat[i][j];
+  return [sums];
+}
+function meanFlat(mat){
+  const flat = mat.flat();
+  return flat.reduce((a,b)=>a+b,0)/flat.length;
+}
+function fmt(n, p=4){ return Number(n).toFixed(p); }
+
+/* -------------------------
+   Network initial state
+   ------------------------- */
+const X = [[1,2,3]];
+const y_true = [[5]];
+
+// W1: shape (3,2)
+let W1 = [[0.1,0.2],[0.3,0.4],[0.5,0.6]];
+let b1 = [[0.1,0.1]];     // shape (1,2)
+
+// W2: shape (2,1)
+let W2 = [[0.7],[0.8]];
+let b2 = [[0.1]];        // shape (1,1)
+
+const learningRate = 0.01;
+
+/* -------------------------
+   DOM utilities: draw connections
+   ------------------------- */
+const networkArea = document.getElementById('networkArea');
+const svg = document.getElementById('connectionsSvg');
+const weightsPool = []; // store weight label DOM nodes
+
+function getCenter(el){
+  const areaRect = networkArea.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return { x: r.left - areaRect.left + r.width/2, y: r.top - areaRect.top + r.height/2 };
+}
+
+function clearConnections(){
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  // remove existing weight/bias labels
+  document.querySelectorAll('.weight-label, .bias-label').forEach(n=>n.remove());
+}
+
+function drawAllConnections(){
+  clearConnections();
+  // layer indices and ids
+  // input -> hidden (layer 0)
+  for(let i=0;i<3;i++){
+    for(let j=0;j<2;j++){
+      drawConn('neuron-input-'+i, 'neuron-hidden-'+j, `conn-l0-${i}-${j}`, `weight-l0-${i}-${j}`);
+    }
+  }
+  // hidden -> output (layer 1)
+  for(let i=0;i<2;i++){
+    drawConn('neuron-hidden-'+i, 'neuron-output-0', `conn-l1-${i}-0`, `weight-l1-${i}-0`);
+  }
+  // draw bias labels near hidden and output neurons
+  for(let j=0;j<2;j++){
+    addBiasLabel('neuron-hidden-'+j, `bias-hidden-${j}`);
+  }
+  addBiasLabel('neuron-output-0', 'bias-output-0');
+  repositionWeightLabels();
+}
+
+function drawConn(fromId, toId, connId, weightId){
+  const fromEl = document.getElementById(fromId);
+  const toEl = document.getElementById(toId);
+  if(!fromEl||!toEl) return;
+  const p1 = getCenter(fromEl);
+  const p2 = getCenter(toEl);
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1', p1.x);
+  line.setAttribute('y1', p1.y);
+  line.setAttribute('x2', p2.x);
+  line.setAttribute('y2', p2.y);
+  line.setAttribute('stroke-linecap','round');
+  line.setAttribute('class','conn-line');
+  line.id = connId;
+  svg.appendChild(line);
+
+  // weight label
+  const weight = document.createElement('div');
+  weight.className = 'weight-label';
+  weight.id = weightId;
+  weight.innerText = 'w';
+  document.body.appendChild(weight);
+  weightsPool.push(weight);
+}
+
+function addBiasLabel(neuronId, biasId){
+  const neuron = document.getElementById(neuronId);
+  if(!neuron) return;
+  const bias = document.createElement('div');
+  bias.className = 'bias-label';
+  bias.id = biasId;
+  bias.innerText = 'b';
+  document.body.appendChild(bias);
+}
+
+function repositionWeightLabels(){
+  // put weight labels at midpoint of lines
+  svg.querySelectorAll('line').forEach(line=>{
+    const id = line.id;
+    const x1 = parseFloat(line.getAttribute('x1'));
+    const y1 = parseFloat(line.getAttribute('y1'));
+    const x2 = parseFloat(line.getAttribute('x2'));
+    const y2 = parseFloat(line.getAttribute('y2'));
+    const midX = (x1+x2)/2;
+    const midY = (y1+y2)/2;
+    const weightId = id.replace('conn','weight');
+    const wEl = document.getElementById(weightId);
+    if(wEl){
+      wEl.style.left = (midX + networkArea.getBoundingClientRect().left) + 'px';
+      wEl.style.top = (midY + networkArea.getBoundingClientRect().top) + 'px';
+    }
+  });
+  // bias labels under neurons
+  ['neuron-hidden-0','neuron-hidden-1','neuron-output-0'].forEach(id=>{
+    const el = document.getElementById(id);
+    const bEl = document.getElementById('bias-'+id.split('-').slice(1).join('-')) || document.getElementById('bias-'+id.replace('neuron-',''));
+    // Actually we used bias-hidden-0 etc
+    const biasId = id.includes('hidden') ? 'bias-hidden-'+id.split('-').pop() : 'bias-output-0';
+    const biasEl = document.getElementById(biasId);
+    if(el && biasEl){
+      const c = getCenter(el);
+      biasEl.style.left = (c.x + networkArea.getBoundingClientRect().left) + 'px';
+      biasEl.style.top = (c.y + el.getBoundingClientRect().height/2 + 12 + networkArea.getBoundingClientRect().top) + 'px';
+    }
+  });
+}
+
+/* reposition on window resize */
+window.addEventListener('resize', ()=>{ drawAllConnections(); updateUI(currentStep); });
+
+/* -------------------------
+   Perform one forward & backward pass with full details
+   We'll compute all intermediate values and store them
+   ------------------------- */
+function computeStepState(W1_, b1_, W2_, b2_){
+  // Forward
+  const z1_dot = dot(X, W1_); // shape 1x2
+  const z1 = addBias(z1_dot, b1_); // 1x2
+  const a1 = relu(z1); // 1x2
+  const z2_dot = dot(a1, W2_); // 1x1
+  const y_pred = addBias(z2_dot, b2_); // 1x1
+  const loss = meanSquared(y_pred, y_true);
+
+  // Backward
+  // dLoss/dy_pred = -2*(y_true - y_pred) / n_samples (n=1)
+  const dL_dy = [[ -2 * (y_true[0][0] - y_pred[0][0]) ]]; // 1x1
+
+  // Layer2 gradients
+  // dW2 = a1^T dot dL_dy  -> shape 2x1
+  const a1_T = transpose(a1); // 2x1
+  const dW2 = dot(a1_T, dL_dy); // 2x1
+  const db2 = copy(dL_dy);      // 1x1
+  // dA1 = dL_dy dot W2^T -> 1x2
+  const W2_T = transpose(W2_);
+  const dA1 = dot(dL_dy, W2_T); // 1x2
+
+  // Layer1 gradients
+  const dZ1 = matElemMul(dA1, reluDeriv(z1)); // 1x2
+  const X_T = transpose(X); // 3x1
+  const dW1 = dot(X_T, dZ1); // 3x2
+  const db1 = sumRows(dZ1); // 1x2
+
+  // Weight updates (apply gradient descent)
+  const W2_new = matSub(W2_, scalarMul(dW2, learningRate));
+  const b2_new = matSub(b2_, scalarMul(db2, learningRate));
+  const W1_new = matSub(W1_, scalarMul(dW1, learningRate));
+  const b1_new = matSub(b1_, scalarMul(db1, learningRate));
+
+  return {
+    z1_dot, z1, a1, z2_dot, y_pred, loss,
+    dL_dy, dW2, db2, dA1, dZ1, dW1, db1,
+    W1_new, b1_new, W2_new, b2_new
+  };
+}
+
+function meanSquared(y_pred, y_true){
+  // mean((y_true - y_pred)^2)
+  const diff = y_true[0][0] - y_pred[0][0];
+  return (diff*diff);
+}
+
+/* -------------------------
+   Generate steps with explanatory HTML computed from numbers
+   ------------------------- */
+let stepStates = []; // array of step objects
+function buildSteps(){
+  stepStates = [];
+  // initial (before any forward)
+  drawAllConnections();
+
+  const initial = {
+    title: 'Initial state',
+    explanation: `<p>We start with inputs <code>X = [1, 2, 3]</code> and target <code>y_true = 5</code>. Initial weights & biases are shown on the connections and under neurons.</p>
+                  <div class="math"><strong>W1</strong> = ${matStr(W1)}<br><strong>b1</strong> = ${matStr(b1)}<br>
+                  <strong>W2</strong> = ${matStr(W2)}<br><strong>b2</strong> = ${matStr(b2)}</div>`,
+    highlights: { neurons:[], conns:[] },
+    onEnter: ()=>{ showValuesBefore(); pulseInputs(); }
+  };
+  stepStates.push(initial);
+
+  // compute full forward/backward for current weights
+  const s = computeStepState(W1, b1, W2, b2);
+
+  // Step 1: Forward - Layer1 dot products (show raw multiplication)
+  let dotDetails = '';
+  for(let j=0;j<s.z1[0].length;j++){
+    const parts = [];
+    for(let i=0;i<X[0].length;i++){
+      parts.push(`${X[0][i]}×${fmt(W1[i][j],3)}`);
+    }
+    dotDetails += `<div class="math">h${j+1} pre-activation: ${parts.join(' + ')} + ${fmt(b1[0][j],3)} = <strong>${fmt(s.z1[0][j],4)}</strong></div>`;
+  }
+  stepStates.push({
+    title: 'Forward — Layer 1 (dense)',
+    explanation: `<p>Compute hidden layer pre-activation values (Z1 = X·W1 + b1):</p>${dotDetails}`,
+    highlights: { neurons:['neuron-input-0','neuron-input-1','neuron-input-2','neuron-hidden-0','neuron-hidden-1'],
+                  conns: ['conn-l0-0-0','conn-l0-0-1','conn-l0-1-0','conn-l0-1-1','conn-l0-2-0','conn-l0-2-1'] },
+    onEnter: ()=>{ animateConns(['conn-l0-0-0','conn-l0-0-1','conn-l0-1-0','conn-l0-1-1','conn-l0-2-0','conn-l0-2-1'], 'forward'); pulseHidden(); updateUIValues(s,0); }
+  });
+
+  // Step 2: Forward - ReLU
+  stepStates.push({
+    title: 'Forward — ReLU activation',
+    explanation: `<p>Apply ReLU: <code>A1 = ReLU(Z1)</code>. ReLU sets negative values to 0; positives stay the same.</p>
+                  <div class="math">Z1 = ${matStr(s.z1)} → A1 = ${matStr(s.a1)}</div>`,
+    highlights: { neurons:['neuron-hidden-0','neuron-hidden-1'] },
+    onEnter: ()=>{ pulseHidden(); updateUIValues(s,1); }
+  });
+
+  // Step 3: Forward - Output
+  stepStates.push({
+    title: 'Forward — Output (dense)',
+    explanation: `<p>Compute final output: <code>y_pred = A1·W2 + b2</code></p>
+                  <div class="math">${s.a1[0][0]}×${fmt(W2[0][0],3)} + ${s.a1[0][1]}×${fmt(W2[1][0],3)} + ${fmt(b2[0][0],3)} = <strong>${fmt(s.y_pred[0][0],4)}</strong></div>`,
+    highlights: { neurons:['neuron-hidden-0','neuron-hidden-1','neuron-output-0'],
+                  conns: ['conn-l1-0-0','conn-l1-1-0'] },
+    onEnter: ()=>{ animateConns(['conn-l1-0-0','conn-l1-1-0'], 'forward'); pulseOutput(); updateUIValues(s,2); }
+  });
+
+  // Step 4: Loss
+  stepStates.push({
+    title: 'Loss (MSE)',
+    explanation: `<p>Compute Mean Squared Error (single sample): <code>Loss = (y_true - y_pred)^2</code></p>
+                  <div class="math">y_true = ${y_true[0][0]}, y_pred = ${fmt(s.y_pred[0][0],4)} → Loss = ${fmt(s.loss,4)}</div>`,
+    highlights: { neurons:['neuron-output-0'] },
+    onEnter: ()=>{ pulseOutput(); updateUIValues(s,3); }
+  });
+
+  // Step 5: Backprop — dLoss/dy_pred
+  stepStates.push({
+    title: 'Backward — dLoss/dy_pred',
+    explanation: `<p>Gradient of loss wrt prediction (single sample):</p>
+                  <div class="math">dL/dy_pred = -2*(y_true - y_pred) = -2×(${y_true[0][0]} - ${fmt(s.y_pred[0][0],4)}) = <strong>${fmt(s.dL_dy[0][0],4)}</strong></div>`,
+    highlights: { neurons:['neuron-output-0'] },
+    onEnter: ()=>{ pulseOutput(); updateUIValues(s,4); }
+  });
+
+  // Step 6: Backprop — Layer2 gradients (dW2, db2) and update
+  let dW2str = matStr(s.dW2);
+  let db2str = matStr(s.db2);
+  stepStates.push({
+    title: 'Backward — Layer2 (gradients & update)',
+    explanation: `<p>Compute gradients for W2 and b2:</p>
+                  <div class="math">dW2 = A1^T · dL/dy = ${dW2str}<br>db2 = sum(dL/dy) = ${db2str}</div>
+                  <p>Apply update: <code>W2_new = W2 - lr × dW2</code>, <code>b2_new = b2 - lr × db2</code></p>
+                  <div class="math">W2 (old) = ${matStr(W2)} → W2 (new) = ${matStr(s.W2_new)}<br>
+                  b2 (old) = ${matStr(b2)} → b2 (new) = ${matStr(s.b2_new)}</div>`,
+    highlights: { neurons:['neuron-hidden-0','neuron-hidden-1','neuron-output-0'], conns:['conn-l1-0-0','conn-l1-1-0'] },
+    onEnter: ()=>{ animateConns(['conn-l1-0-0','conn-l1-1-0'],'back'); pulseHidden(); pulseOutput(); updateUIValues(s,5); applyLayer2Update(s); }
+  });
+
+  // Step 7: Backprop — propagate to hidden (dA1, dZ1)
+  stepStates.push({
+    title: 'Backward — Propagate to Hidden (dA1, dZ1)',
+    explanation: `<p>Propagate gradient into hidden layer:</p>
+                  <div class="math">dA1 = dL/dy × W2^T = ${matStr(s.dA1)}<br>
+                  dZ1 = dA1 * ReLU'(Z1) = ${matStr(s.dZ1)}</div>`,
+    highlights: { neurons:['neuron-hidden-0','neuron-hidden-1'] },
+    onEnter: ()=>{ animateConns(['conn-l1-0-0','conn-l1-1-0'],'back'); pulseHidden(); updateUIValues(s,6); }
+  });
+
+  // Step 8: Backprop — Layer1 gradients and update
+  stepStates.push({
+    title: 'Backward — Layer1 (gradients & update)',
+    explanation: `<p>Compute gradients for W1 and b1 and update:</p>
+                  <div class="math">dW1 = X^T · dZ1 = ${matStr(s.dW1)}<br>db1 = sum(dZ1) = ${matStr(s.db1)}</div>
+                  <div class="math">W1 (old) = ${matStr(W1)} → W1 (new) = ${matStr(s.W1_new)}<br>
+                  b1 (old) = ${matStr(b1)} → b1 (new) = ${matStr(s.b1_new)}</div>`,
+    highlights: { neurons:['neuron-input-0','neuron-input-1','neuron-input-2','neuron-hidden-0','neuron-hidden-1'],
+                  conns: ['conn-l0-0-0','conn-l0-0-1','conn-l0-1-0','conn-l0-1-1','conn-l0-2-0','conn-l0-2-1'] },
+    onEnter: ()=>{ animateConns(['conn-l0-0-0','conn-l0-0-1','conn-l0-1-0','conn-l0-1-1','conn-l0-2-0','conn-l0-2-1'],'back'); pulseInputs(); pulseHidden(); updateUIValues(s,7); applyLayer1Update(s); }
+  });
+
+  // Step 9: Finished one update — show new weights & suggest repeating
+  stepStates.push({
+    title: 'One training step complete',
+    explanation: `<p>We applied gradient descent with learning rate <code>${learningRate}</code>. We updated both layers' weights and biases.</p>
+                  <div class="math">Updated W1 = ${matStr(s.W1_new)}<br>
+                  Updated b1 = ${matStr(s.b1_new)}<br>
+                  Updated W2 = ${matStr(s.W2_new)}<br>
+                  Updated b2 = ${matStr(s.b2_new)}</div>
+                  <p>You can repeat the same process (another epoch) with the new weights to further reduce the loss.</p>`,
+    highlights: { neurons:[], conns:[] },
+    onEnter: ()=>{ updateUIValues(s,8); }
+  });
+
+} // end buildSteps
+
+/* -------------------------
+   Small helpers to update UI
+   ------------------------- */
+function matStr(m){ return '[' + m.map(r => '[' + r.map(v => fmt(v,4)).join(', ') + ']').join(', ') + ']'; }
+
+function setNeuronValue(id, value, extra=''){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.querySelector('.value').innerText = fmt(value,4);
+  el.querySelector('.extra').innerText = extra;
+}
+
+function setWeightLabel(id, val){
+  const el = document.getElementById(id);
+  if(el) el.innerText = 'w: ' + fmt(val,4);
+}
+function setBiasLabel(id,val){
+  const el = document.getElementById(id);
+  if(el) el.innerText = 'b: ' + fmt(val,4);
+}
+
+function updateAllWeightBiasLabels(){
+  // W1 weights (3x2)
+  for(let i=0;i<3;i++) for(let j=0;j<2;j++){
+    setWeightLabel('weight-l0-'+i+'-'+j, W1[i][j]);
+  }
+  for(let i=0;i<2;i++) setWeightLabel('weight-l1-'+i+'-0', W2[i][0]);
+  // biases
+  for(let j=0;j<2;j++) setBiasLabel('bias-hidden-'+j, b1[0][j]);
+  setBiasLabel('bias-output-0', b2[0][0]);
+}
+
+/* Update visible neuron values according to step stage:
+   stage: 0 = after z1 computed, 1 = after relu, 2 = after output, 3 = show loss,
+   4 = after dL computed (show dL), 5 = after layer2 update, 6 = show dA/dZ, 7 = after layer1 update, 8 = final
+   s: the computed state
+*/
+function updateUIValues(s, stage){
+  // inputs always show
+  setNeuronValue('neuron-input-0', X[0][0], '');
+  setNeuronValue('neuron-input-1', X[0][1], '');
+  setNeuronValue('neuron-input-2', X[0][2], '');
+
+  // hidden
+  if(stage>=0){
+    // show z1 pre-activation
+    for(let j=0;j<2;j++){
+      setNeuronValue('neuron-hidden-'+j, s.z1[0][j], 'Z: ' + fmt(s.z1[0][j],4));
+    }
+  }
+  if(stage>=1){
+    // show a1 after relu
+    for(let j=0;j<2;j++){
+      setNeuronValue('neuron-hidden-'+j, s.a1[0][j], 'A: ' + fmt(s.a1[0][j],4));
+    }
+  }
+  if(stage>=2){
+    // output show y_pred
+    setNeuronValue('neuron-output-0', s.y_pred[0][0], 'y_pred: ' + fmt(s.y_pred[0][0],4));
+  }
+  if(stage>=3){
+    // show loss in extra of output
+    document.getElementById('explanationHtml').scrollTop = 0;
+  }
+  if(stage>=4){
+    // show dL in output extra
+    setNeuronValue('neuron-output-0', s.y_pred[0][0], 'dL: ' + fmt(s.dL_dy[0][0],4));
+  }
+  if(stage>=5){
+    // updated W2,b2 displayed (we apply update in applyLayer2Update)
+    updateAllWeightBiasLabels();
+  }
+  if(stage>=6){
+    // show dA/dZ in hidden extras
+    for(let j=0;j<2;j++){
+      const extra = 'dA: ' + fmt(s.dA1[0][j],4) + ' | dZ: ' + fmt(s.dZ1[0][j],4);
+      document.getElementById('neuron-hidden-'+j).querySelector('.extra').innerText = extra;
+    }
+  }
+  if(stage>=7){
+    // updated W1,b1 displayed
+    updateAllWeightBiasLabels();
+  }
+  if(stage>=8){
+    updateAllWeightBiasLabels();
+  }
+}
+
+/* small pulsing helpers */
+function pulseInputs(){ ['neuron-input-0','neuron-input-1','neuron-input-2'].forEach(n=>pulse(n,'forward')); }
+function pulseHidden(){ ['neuron-hidden-0','neuron-hidden-1'].forEach(n=>pulse(n,'forward')); }
+function pulseOutput(){ pulse('neuron-output-0','forward'); }
+function pulse(id, mode='forward'){ const el = document.getElementById(id); if(!el) return;
+  if(mode==='forward'){ el.classList.add('pulse-forward'); setTimeout(()=>el.classList.remove('pulse-forward'),700); }
+  else { el.classList.add('pulse-back'); setTimeout(()=>el.classList.remove('pulse-back'),700); }
+}
+
+/* animate connection ids array with forward/back class */
+function animateConns(ids, dir='forward'){
+  ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.classList.add(dir==='forward' ? 'conn-forward' : 'conn-back');
+    setTimeout(()=> el.classList.remove(dir==='forward' ? 'conn-forward' : 'conn-back'), 900);
+  });
+}
+
+/* Apply updates to W2 and b2 (after step 6)
+   Note: computeStepState already computed the new W2_new, b2_new for display — here we assign them
+*/
+function applyLayer2Update(s){
+  W2 = copy(s.W2_new);
+  b2 = copy(s.b2_new);
+  // update labels positions & texts
+  updateAllWeightBiasLabels();
+}
+function applyLayer1Update(s){
+  W1 = copy(s.W1_new);
+  b1 = copy(s.b1_new);
+  updateAllWeightBiasLabels();
+}
+
+/* -------------------------
+   Step navigation & rendering
+   ------------------------- */
+let currentStep = 0;
+let totalSteps = 0;
+
+function renderStep(index){
+  const st = stepStates[index];
+  document.getElementById('stepTitle').innerText = st.title;
+  document.getElementById('explanationHtml').innerHTML = st.explanation;
+  document.getElementById('stepCounter').innerText = `${index+1} / ${stepStates.length}`;
+  // remove all pulses / conn highlights
+  document.querySelectorAll('.neuron').forEach(n=>{ n.classList.remove('pulse-forward','pulse-back'); });
+  svg.querySelectorAll('line').forEach(l=>{ l.classList.remove('conn-forward','conn-back'); });
+  // call onEnter
+  if(typeof st.onEnter === 'function') st.onEnter();
+  // highlights (visual)
+  if(st.highlights){
+    if(st.highlights.neurons){
+      st.highlights.neurons.forEach(nid=>{
+        const el = document.getElementById(nid);
+        if(el) { el.classList.add('pulse-forward'); setTimeout(()=>el.classList.remove('pulse-forward'),600); }
+      });
+    }
+    if(st.highlights.conns){
+      animateConns(st.highlights.conns, st.title.toLowerCase().includes('back') ? 'back' : 'forward');
+    }
+  }
+  // update weight/bias labels position after content changes
+  repositionWeightLabels();
+}
+
+document.getElementById('nextBtn').addEventListener('click', ()=>{
+  if(currentStep < stepStates.length -1){ currentStep++; renderStep(currentStep); }
+});
+document.getElementById('prevBtn').addEventListener('click', ()=>{
+  if(currentStep > 0){ currentStep--; renderStep(currentStep); }
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  // restore initial weights
+  W1 = [[0.1,0.2],[0.3,0.4],[0.5,0.6]];
+  b1 = [[0.1,0.1]];
+  W2 = [[0.7],[0.8]];
+  b2 = [[0.1]];
+  buildSteps();
+  currentStep = 0;
+  renderStep(currentStep);
+});
+
+/* -------------------------
+   init
+   ------------------------- */
+function init(){
+  drawAllConnections();
+  updateAllWeightBiasLabels();
+  buildSteps();
+  currentStep = 0;
+  renderStep(0);
+}
+init();
+
+</script>
+</body>
+</html>
